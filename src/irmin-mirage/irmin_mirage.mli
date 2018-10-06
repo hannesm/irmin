@@ -18,13 +18,15 @@
 
 (** The context to use for synchronisation. *)
 
-module Info (N: sig val name: string end)(C: Mirage_clock.PCLOCK): sig
+module Info (C: Mirage_clock.PCLOCK): sig
 
-  (** {1 Commit info creators} *)
+  (** {1 Commit info} *)
 
-  val f: C.t -> ('a, Format.formatter, unit, Irmin.Info.f) format4 -> 'a
-  (** Commit info function, using [N.name] and [C.now_d_ps] provided
-      in the functor arguments. *)
+  val f: author:string -> C.t ->
+    ('a, Format.formatter, unit, Irmin.Info.f) format4 -> 'a
+  (** [f c ~author msg] is a new commit info with [author] as commit
+     author, [C.now_d_ps c] as commit date and [msg] as commit
+     message.*)
 
 end
 
@@ -78,7 +80,7 @@ module Git: sig
     val connect:
       ?depth:int ->
       ?branch:string ->
-      ?path:string ->
+      ?root:key ->
       ?conduit:Conduit_mirage.t ->
       ?resolver:Resolver_lwt.t ->
       ?headers:Cohttp.Header.t ->
@@ -95,42 +97,40 @@ module Git: sig
       repository. *)
   module KV_RO (G: Irmin_git.G): KV_RO with type git := G.t
 
-  (** Embed an Irmin store into a local Git repository. *)
-  module FS (S: Mirage_fs_lwt.S): sig
+  module type KV_RW = sig
 
-    module G: Irmin_git.G
-    val set: S.t -> unit (* XXX(samoht): particularly ugly and wrong ... *)
+    type git
+    type clock
 
-    module Make
-        (C: Irmin.Contents.S)
-        (P: Irmin.Path.S)
-        (B: Irmin.Branch.S):
-      S with type key = P.t
-         and type step = P.step
-         and module Key = P
-         and type contents = C.t
-         and type branch = B.t
-         and module Git = G
+    include Mirage_kv_lwt.RW
 
-    module Ref
-        (C: Irmin.Contents.S):
-      S with type key = string list
-         and type step = string
-         and type contents = C.t
-         and type branch = Irmin_git.reference
-         and module Git = G
+    val connect:
+      ?depth:int ->
+      ?branch:string ->
+      ?root:key ->
+      ?conduit:Conduit_mirage.t ->
+      ?resolver:Resolver_lwt.t ->
+      ?headers:Cohttp.Header.t ->
+      ?author:string ->
+      ?msg:([`Set of key| `Remove of key| `Batch] -> string) ->
+      git -> clock -> string -> t Lwt.t
+      (** [connect ?depth ?branch ?path ?author ?msg g c uri] clones
+         the given [uri] into [g] repository, using the given
+         [branch], [depth] and ['/']-separated sub-[path]. By default,
+         [branch] is master, [depth] is [1] and [path] is empty,
+         ie. reads will be relative to the root of the repository.
 
-    module KV
-        (C: Irmin.Contents.S):
-      S with type key = Irmin.Path.String_list.t
-         and type step = string
-         and module Key = Irmin.Path.String_list
-         and type contents = C.t
-         and type branch = string
-         and module Git = G
+          [author], [msg] and [c] are used to create new commit info
+         values on every update.  By defaut [author] is ["irmin"
+         <irmin@mirage.io>] and [msg] returns basic information about
+         the kind of operations performed. *)
 
-    module KV_RO: KV_RO with type git := G.t
   end
+
+  (** Functor to create a MirageOS' KV_RW store from a Git
+      repository. *)
+  module KV_RW (G: Irmin_git.G) (C: Mirage_clock.PCLOCK):
+    KV_RW with type git := G.t
 
   (** Embed an Irmin store into an in-memory Git repository. *)
   module Mem: sig
@@ -164,5 +164,6 @@ module Git: sig
          and module Git = G
 
     module KV_RO: KV_RO with type git := G.t
+    module KV_RW (C: Mirage_clock.PCLOCK): KV_RW with type git := G.t
   end
 end

@@ -15,13 +15,14 @@
  *)
 
 open Astring
+open Lwt.Infix
 
-module Info (N: sig val name: string end) (C: Mirage_clock.PCLOCK) = struct
-  let f c fmt =
+module Info (C: Mirage_clock.PCLOCK) = struct
+  let f ~author c fmt =
     Fmt.kstrf (fun msg () ->
         C.now_d_ps c |>
         Ptime.v |> Ptime.to_float_s |> Int64.of_float |> fun date ->
-        Irmin.Info.v ~date ~author:N.name msg
+        Irmin.Info.v ~date ~author msg
       ) fmt
 end
 
@@ -75,7 +76,7 @@ module Git = struct
     val connect:
       ?depth:int ->
       ?branch:string ->
-      ?path:string ->
+      ?root:key ->
       ?conduit:Conduit_mirage.t ->
       ?resolver:Resolver_lwt.t ->
       ?headers:Cohttp.Header.t ->
@@ -84,28 +85,82 @@ module Git = struct
 
   module KV_RO (G: Git.S) = struct
 
+    module Key = Mirage_kv.Key
+
+    type key = Key.t
+    type value = string
+
     module G = struct
       include G
       let v ?dotgit:_ ?compression:_ ?buffers:_ _root =
         assert false
     end
 
-    open Lwt.Infix
-
     module S = KV(G)(Irmin.Contents.String)
 
     module Sync = Irmin.Sync(S)
 
     type 'a io = 'a Lwt.t
-    type t = { path: string list; t: S.t; }
     let disconnect _ = Lwt.return_unit
-    type page_aligned_buffer = Cstruct.t
-    let unknown_key k = Lwt.return (Error (`Unknown_key k))
-    let ok x = Lwt.return (Ok x)
-    type error = Mirage_kv.error
-    let pp_error = Mirage_kv.pp_error
 
-    let read_head t =
+    type error = [ Mirage_kv.error | `Exn of exn ]
+
+    let pp_error ppf = function
+      | #Mirage_kv.error as e -> Mirage_kv.pp_error ppf e
+      | `Exn e -> Fmt.exn ppf e
+
+    let err e: ('a, error) result = Error e
+    let err_exn e = err (`Exn e)
+    let err_not_found k = err (`Not_found k)
+
+    let path x =
+      (* XXX(samoht): we should probably just push the Key module in
+         Irmin and remove the path abstraction completely ... *)
+      Key.segments x
+
+    module Tree = struct
+
+      type t = { repo: S.repo; tree: S.tree }
+
+      let digest t key =
+        S.Tree.find_tree t.tree (path key) >>= function
+        | None      -> Lwt.return (err_not_found key)
+        | Some tree ->
+          (* XXX(samoht): it shouldn't be blocking here and it the
+             t.repo shouldn't be there. Need the RAO changes first. *)
+          S.Tree.hash t.repo tree >|= fun h ->
+          Ok (Irmin.Type.to_string S.Tree.hash_t h)
+
+      let list t key =
+        Lwt.catch (fun () ->
+            S.Tree.list t.tree (path key) >|= fun l ->
+            let l =
+            List.map (fun (s, k) -> s, match k with
+              | `Contents -> `Value
+              | `Node     -> `Dictionary
+              ) l
+          in
+          Ok l
+        ) (fun e -> Lwt.return (err_exn e))
+
+      let exists t key =
+        Lwt.catch (fun () ->
+            S.Tree.kind t.tree (path key) >|= function
+            | Some `Contents -> Ok (Some `Value)
+            | Some `Node     -> Ok (Some `Dictionary)
+            | None           -> Ok None
+          ) (fun e -> Lwt.return (err_exn e))
+
+      let get t key =
+        S.Tree.find t.tree (path key) >|= function
+        | None   -> err_not_found key
+        | Some v -> Ok v
+
+    end
+
+    type t = { root: S.key; t: S.t }
+
+    let head_message t =
       S.Head.find t.t >|= function
       | None   -> "empty HEAD"
       | Some h ->
@@ -121,55 +176,218 @@ module Git = struct
           (Irmin.Info.date info)
           (Irmin.Info.message info)
 
-    let mk_path t path =
-      String.cuts path ~sep:"/"
-      |> List.filter ((<>) "")
-      |> List.append t.path
 
-    let mem t path = S.mem t.t (mk_path t path) >|= fun res -> Ok res
+    (* XXX(samoht): extracted from Canopy. Should probably be
+         upstreamed directly. *)
 
-    let read_store t path off len =
-      S.find t.t (mk_path t path) >>= function
-      | None   -> unknown_key path
-      | Some v ->
-        (* XXX(samoht): this clearly could be improved *)
-        ok [Cstruct.of_string (String.with_range v ~first:off ~len)]
+    module Topological = Graph.Topological.Make(S.History)
 
-    let read t path off len =
-      let off = Int64.to_int off
-      and len = Int64.to_int len
+    (* XXX(samoht): very slow: will go through the entire history!! *)
+    let created_updated_ids commit key =
+      S.of_commit commit >>= fun t ->
+      S.history t >>= fun history ->
+      let aux commit_id acc =
+        S.of_commit commit_id >>= fun store ->
+        acc >>= fun (created, updated, last) ->
+        S.find store (path key) >|= fun data ->
+        match data, last with
+        | None  , None -> (created, updated, last)
+        | None  , Some _ -> (created, updated, last)
+        | Some x, Some y when x = y -> (created, updated, last)
+        | Some _, None -> (commit_id, commit_id, data)
+        | Some _, Some _ -> (created, commit_id, data)
       in
-      match path with
-      | "HEAD" ->
-        read_head t >>= fun buf ->
-        let buf = Cstruct.sub (Cstruct.of_string buf) off len in
-        ok [buf]
-      | _ -> read_store t path off len
+      Topological.fold aux history (Lwt.return (commit, commit, None))
 
-    let size_head t =
-      read_head t >>= fun buf -> ok (Int64.of_int @@ String.length buf)
+    let last_modified_at_commit head key =
+      created_updated_ids head key  >|= fun (_, updated, _) ->
+      S.Commit.info updated |> fun info ->
+      (* XXX(samoht): should Irmin use Ptime directly? *)
+      Ok (0, Irmin.Info.date info)
 
-    let size_store t path =
-      S.find t.t (mk_path t path) >>= function
-      | None   -> unknown_key path
-      | Some v -> ok (Int64.of_int @@ String.length v)
+    let last_modified t key =
+      S.Head.get t.t >>= fun head ->
+      last_modified_at_commit head key
 
-    let size t = function
-      | "HEAD" -> size_head t
-      | path    -> size_store t path
-
-    let connect ?(depth = 1) ?(branch = "master") ?path ?conduit ?resolver ?headers
+    let connect ?(depth = 1) ?(branch = "master")
+        ?(root = Mirage_kv.Key.empty) ?conduit ?resolver ?headers
         t uri =
       let remote = S.remote ?conduit ?resolver ?headers uri in
-      let path = match path with
-        | None -> []
-        | Some s -> List.filter ((<>)"") @@ String.cuts s ~sep:"/"
-      in
       let head = G.Reference.of_string ("refs/heads/" ^ branch) in
       S.repo_of_git ~bare:true ~head t >>= fun repo ->
       S.of_branch repo branch >>= fun t ->
       Sync.pull_exn t ~depth remote `Set >|= fun () ->
-      { t = t; path }
+      let root = path root in
+      { t; root }
+
+    let tree t =
+      let repo = S.repo t.t in
+      (S.find_tree t.t t.root >|= function
+        | None      -> S.Tree.empty
+        | Some tree -> tree)
+      >|= fun tree ->
+      { Tree.repo; tree }
+
+    let exists t k = tree t >>= fun t -> Tree.exists t k
+    let get t k = tree t >>= fun t -> Tree.get t k
+    let list t k = tree t >>= fun t -> Tree.list t k
+    let digest t k = tree t >>= fun t -> Tree.digest t k
+  end
+
+  module type KV_RW = sig
+
+    type git
+    type clock
+
+    include Mirage_kv_lwt.RW
+
+    val connect:
+      ?depth:int ->
+      ?branch:string ->
+      ?root:key ->
+      ?conduit:Conduit_mirage.t ->
+      ?resolver:Resolver_lwt.t ->
+      ?headers:Cohttp.Header.t ->
+      ?author:string ->
+      ?msg:([`Set of key| `Remove of key| `Batch] -> string) ->
+      git -> clock -> string -> t Lwt.t
+
+  end
+
+  module KV_RW (G: Irmin_git.G) (C: Mirage_clock.PCLOCK) = struct
+
+    (* XXX(samoht): batches are stored in memory. This could be bad if
+       large objects are stored for too long... Might be worth having
+       a clever LRU, which pushes larges objects to the underlying
+       layer when needed.  *)
+
+    type clock = C.t
+    module Info = Info(C)
+    module RO = KV_RO(G)
+    module S = RO.S
+    module Tree = RO.Tree
+
+    type store =
+      | Batch of { repo: S.repo; mutable tree: S.tree; origin: S.commit }
+      | Store of RO.t
+
+    and t = {
+      store : store;
+      author: string;
+      clock : C.t;
+      msg   : [`Set of RO.key|`Remove of RO.key|`Batch] -> string
+    }
+
+    type key = RO.key
+    type value = RO.value
+    type error = RO.error
+    let pp_error = RO.pp_error
+    type 'a io = 'a RO.io
+
+    let default_author = "irmin <irmin@mirage.io>"
+
+    let default_msg = function
+      | `Set k    -> Fmt.strf "Updating %a" Mirage_kv.Key.pp k
+      | `Remove k -> Fmt.strf "Removing %a" Mirage_kv.Key.pp k
+      | `Batch    -> "Commmiting batch operation"
+
+    let connect ?depth ?branch ?root ?conduit ?resolver ?headers
+        ?(author = default_author)
+        ?(msg = default_msg)
+        git clock uri =
+      RO.connect ?depth ?branch ?root ?conduit ?resolver ?headers git uri
+      >|= fun t ->
+      { store = Store t; author; clock; msg }
+
+    let disconnect t = match t.store with
+      | Store t -> RO.disconnect t
+      | Batch _ -> Lwt.return ()
+
+    (* XXX(samoht): always return the 'last modified' on the
+       underlying storage layer, not for the current batch. *)
+    let last_modified t k = match t.store with
+      | Store t -> RO.last_modified t k
+      | Batch b ->
+        (* XXX(samoht): we need a Tree.last_modified function too *)
+        RO.last_modified_at_commit b.origin k
+
+    let repo t = match t.store with
+      | Store t -> S.repo t.t
+      | Batch b -> b.repo
+
+    let tree t = match t.store with
+      | Store t -> RO.tree t
+      | Batch b -> Lwt.return { Tree.tree = b.tree; repo = repo t }
+
+    let digest t k = tree t >>= fun t -> Tree.digest t k
+    let exists t k = tree t >>= fun t -> Tree.exists t k
+    let get t k = tree t >>= fun t -> Tree.get t k
+    let list t k = tree t >>= fun t -> Tree.list t k
+
+    type write_error = [ RO.error| Mirage_kv.write_error ]
+
+    let pp_write_error ppf = function
+      | #RO.error as e -> RO.pp_error ppf e
+      | #Mirage_kv.write_error as e -> Mirage_kv.pp_write_error ppf e
+
+    let info t op = Info.f ~author:t.author t.clock "%s" (t.msg op)
+
+    let path = RO.path
+    let err_exn e = (RO.err_exn e :> ('a, write_error) result)
+
+    let set t k v =
+      let info = info t (`Set k) in
+      match t.store with
+      | Store t ->
+        Lwt.catch
+          (fun () ->
+             S.set ~info t.t (path k) v ~strategy:`Set >|= fun () -> Ok ())
+          (fun e ->
+             Lwt.return (err_exn e))
+      | Batch b ->
+        Lwt.catch
+          (fun () ->
+             S.Tree.add b.tree (path k) v >|= fun tree ->
+             b.tree <- tree;
+             Ok ())
+          (fun e ->
+             Lwt.return (err_exn e))
+
+
+    let remove t k =
+      let info = info t (`Remove k) in
+      match t.store with
+      | Store t ->
+        Lwt.catch
+          (fun () ->
+             S.remove ~info t.t (path k) ~strategy:`Set >|= fun () -> Ok ())
+          (fun e ->
+             Lwt.return (err_exn e))
+      | Batch b ->
+        Lwt.catch
+          (fun () ->
+             S.Tree.remove b.tree (path k) >|= fun tree ->
+             b.tree <- tree;
+             Ok ())
+          (fun e ->
+             Lwt.return (err_exn e))
+
+    (* XXX(samoht): fix retry *)
+    let batch ?retries:_ t f =
+      let info = info t `Batch in
+      let rec aux t = match t.store with
+        | Batch _ -> assert false
+        | Store t ->
+          let repo = S.repo t.t in
+          S.Head.find t.t >>= function
+          | None        -> assert false
+          | Some origin ->
+            S.Commit.tree origin >>= fun tree ->
+            let t = Batch { repo; tree; origin } in
+            f t >>= fun t' ->
+            S.set_tree t'
+      in
+      assert false
 
   end
 
@@ -179,31 +397,7 @@ module Git = struct
     module Ref   = Ref(G)
     module KV    = KV(G)
     module KV_RO = KV_RO(G)
+    module KV_RW = KV_RW(G)
   end
 
-  module FS (X: Mirage_fs_lwt.S) = struct
-
-    module G = struct
-      include Git_mirage.Store(X)
-
-      let x = ref None
-
-      let v ?dotgit ?compression ?buffers root =
-        let buffer = match buffers with
-          | None   -> None
-          | Some p -> Some (Lwt_pool.use p)
-        in
-        (* XXX(samoht): ugly *)
-        match !x with
-        | None   -> Fmt.failwith "store not connected"
-        | Some x -> v ?dotgit ?compression ?buffer x root
-    end
-
-    let set y = G.x := Some y
-
-    module Make  = Make(G)
-    module Ref   = Ref(G)
-    module KV    = KV(G)
-    module KV_RO = KV_RO(G)
-  end
 end
