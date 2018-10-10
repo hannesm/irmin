@@ -372,7 +372,6 @@ module Git = struct
           (fun e ->
              Lwt.return (err_exn e))
 
-    (* XXX(samoht): fix retry *)
     let batch ?retries:_ t f =
       let info = info t `Batch in
       let rec aux t = match t.store with
@@ -383,11 +382,16 @@ module Git = struct
           | None        -> assert false
           | Some origin ->
             S.Commit.tree origin >>= fun tree ->
-            let t = Batch { repo; tree; origin } in
-            f t >>= fun t' ->
-            S.set_tree t'
+            (S.Tree.find_tree tree t.root >|= function
+             | Some t -> t
+             | None   -> S.Tree.empty)
+            >>= fun tree ->
+            let batch = Batch { repo; tree; origin } in
+            f batch >>= fun new_batch ->
+            S.set_tree t.t ~info ~strategy:(`Merge_with_parent origin)
+              t.root new_batch
       in
-      assert false
+      aux t
 
   end
 
