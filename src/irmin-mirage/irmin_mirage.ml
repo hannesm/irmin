@@ -372,24 +372,45 @@ module Git = struct
           (fun e ->
              Lwt.return (err_exn e))
 
+    let get_store_tree (t: RO.t) =
+      S.Head.find t.t >>= function
+      | None        -> Lwt.return None
+      | Some origin ->
+        S.Commit.tree origin >>= fun tree ->
+        S.Tree.find_tree tree t.root >|= function
+        | Some t -> Some (origin, t)
+        | None   -> Some (origin, S.Tree.empty)
+
     let batch ?retries:_ t f =
       let info = info t `Batch in
       let rec aux t = match t.store with
-        | Batch _ -> assert false
-        | Store t ->
-          let repo = S.repo t.t in
-          S.Head.find t.t >>= function
-          | None        -> assert false
-          | Some origin ->
-            S.Commit.tree origin >>= fun tree ->
-            (S.Tree.find_tree tree t.root >|= function
-             | Some t -> t
-             | None   -> S.Tree.empty)
-            >>= fun tree ->
-            let batch = Batch { repo; tree; origin } in
-            f batch >>= fun new_batch ->
-            S.set_tree t.t ~info ~strategy:(`Merge_with_parent origin)
-              t.root new_batch
+        | Batch b ->
+          (* copy the tree *)
+          let old_tree = b.tree in
+          let copy_b = Batch { b with tree = old_tree } in
+          f copy_b >>= fun new_b ->
+          (* copy the main tree again. It could have changed while we
+             were doing [f copy_b]. *)
+          let tree = b.tree in
+          S.Tree.merge ~old:(Irmin.Merge.promise old_tree) tree new_b
+        | Store s ->
+          let repo = S.repo s.t in
+          (* get the tree origin *)
+          get_store_tree s >>= function
+          | None -> f t.store  (* no transaction is needed *)
+          | Some (origin, old_tree) ->
+            let b = Batch { repo; tree = old_tree; origin } in
+            f b >>= fun result ->
+            get_store_tree s >>= function
+            | None -> aux t (* Someting weird happened, retring *)
+            | Some (head, tree) ->
+              let strategy = `Merge_with_parent origin in
+              Irmin.Merge.f
+                S.Tree.merge ~old:(Irmin.Merge.promise old_tree) tree b.tree
+              >>= function
+              | Error (`Conflict _) -> aux t
+              | Ok new_tree ->
+                S.set s.t ~info ~strategy t.root new_b
       in
       aux t
 

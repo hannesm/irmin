@@ -36,7 +36,7 @@ module Json_tree(Store: S.STORE with type contents = json): sig
   val get_tree: Store.tree -> Store.key -> json Lwt.t
   val set_tree : Store.tree -> Store.key -> json -> Store.tree Lwt.t
   val get : Store.t -> Store.key -> json Lwt.t
-  val set : Store.t -> Store.key -> json -> info:Info.f -> unit Lwt.t
+  val set : info:Info.f -> Store.t -> Store.key -> json -> unit Lwt.t
 end
 
 module Store
