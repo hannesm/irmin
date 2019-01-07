@@ -552,9 +552,6 @@ module Make (P: S.PRIVATE) = struct
     | `Test_tree of tree option
   ]
 
-  let pp_write_error ppf = function
-    | XXX
-
   let write_error e : ('a, write_error) result Lwt.t = Lwt.return (Error e)
   let err_test_tree v = write_error (`Test_tree v)
 

@@ -377,13 +377,17 @@ module Make (S: S) = struct
       S.watch ?init:h t (fun v -> check v)
       >>= fun w ->
 
-      S.set t ~info:(infof "update") key v1 >>= fun () ->
+      S.set t ~info:(infof "update") key v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       retry (fun n -> Alcotest.(check int) ("watch 1 " ^ n) 3 !r) >>= fun () ->
 
       S.Head.find t >>= fun h ->
       old_head := h;
 
-      S.set t ~info:(infof "update") key v2 >>= fun () ->
+      S.set t ~info:(infof "update") key v2 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       retry (fun n -> Alcotest.(check int) ("watch 2 " ^ n) 6 !r) >>= fun () ->
 
       S.unwatch u >>= fun () ->
@@ -399,9 +403,13 @@ module Make (S: S) = struct
       >>= fun v ->
       S.watch_key ~init:h t key (fun _ -> incr r; Lwt.return_unit)
       >>= fun w ->
-      S.set t ~info:(infof "update") key v1 >>= fun () ->
+      S.set t ~info:(infof "update") key v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       retry (fun n -> Alcotest.(check int) ("watch 3 " ^ n) 9 !r) >>= fun () ->
-      S.set t ~info:(infof "update") key v2 >>= fun () ->
+      S.set t ~info:(infof "update") key v2 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       retry (fun n -> Alcotest.(check int) ("watch 4 " ^ n) 12 !r) >>= fun () ->
       S.unwatch u >>= fun () ->
       S.unwatch v >>= fun () ->
@@ -535,7 +543,9 @@ module Make (S: S) = struct
       let v1 = "X1" in
       let v2 = "X2" in
 
-      S.set t1 ~info:(infof "update") ["a";"b"] v1 >>= fun () ->
+      S.set t1 ~info:(infof "update") ["a";"b"] v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       S.Branch.remove repo S.Branch.master >>= fun () ->
       State.check "init" (0, 0) (0, 0, 0) state >>= fun () ->
 
@@ -543,21 +553,29 @@ module Make (S: S) = struct
 
       State.check "watches on" (1, 0) (0, 0, 0) state >>= fun () ->
 
-      S.set t1 ~info:(infof "update") ["a";"b"] v1 >>= fun () ->
+      S.set t1 ~info:(infof "update") ["a";"b"] v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       State.check "watches adds" (1, 1) (100, 0, 0) state >>= fun () ->
 
-      S.set t2 ~info:(infof "update") ["a";"c"] v1 >>= fun () ->
+      S.set t2 ~info:(infof "update") ["a";"c"] v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       State.check "watches updates" (1, 1) (100, 100, 0) state >>= fun () ->
 
       S.Branch.remove repo S.Branch.master >>= fun () ->
       State.check "watches removes" (1, 1) (100, 100, 100) state >>= fun () ->
 
       Lwt_list.iter_s (fun f -> S.unwatch f) !stops_0 >>= fun () ->
-      S.set t2 ~info:(infof "update") ["a"] v1 >>= fun () ->
+      S.set t2 ~info:(infof "update") ["a"] v1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       State.check "watches half off" (1, 1) (150, 100, 100) state  >>= fun () ->
 
       Lwt_list.iter_s (fun f -> S.unwatch f) !stops_1 >>= fun () ->
-      S.set t1 ~info:(infof "update") ["a"] v2 >>= fun () ->
+      S.set t1 ~info:(infof "update") ["a"] v2 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       State.check "watches off" (0, 0) (150, 100, 100) state >>= fun () ->
 
       Log.debug (fun f -> f "WATCH-ALL");
@@ -591,26 +609,46 @@ module Make (S: S) = struct
       let path3 = ["a"; "b"; "d"] in
       let add = State.apply "branch-key" state `Add (fun _ ->
           let v = "" in
-          S.set t1 ~info:(infof "set1") path1 v >>= fun () ->
-          S.set t1 ~info:(infof "set2") path2 v >>= fun () ->
-          S.set t1 ~info:(infof "set3") path3 v >>= fun () ->
+          S.set t1 ~info:(infof "set1") path1 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+            S.set t1 ~info:(infof "set2") path2 v >>= function
+            | Error _ -> Lwt.fail_with "error while writing"
+            | Ok () ->
+          S.set t1 ~info:(infof "set3") path3 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
           Lwt.return_unit
         ) in
       let update = State.apply "branch-key" state `Update (fun n ->
           let v = string_of_int n in
-          S.set t2 ~info:(infof "update1") path1 v >>= fun () ->
-          S.set t2 ~info:(infof "update2") path2 v >>= fun () ->
-          S.set t2 ~info:(infof "update3") path3 v >>= fun () ->
+          S.set t2 ~info:(infof "update1") path1 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.set t2 ~info:(infof "update2") path2 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.set t2 ~info:(infof "update3") path3 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
           Lwt.return_unit
         ) in
       let remove = State.apply "branch-key" state `Remove (fun _ ->
-          S.remove t1 ~info:(infof "remove1") path1 >>= fun () ->
-          S.remove t1 ~info:(infof "remove2") path2 >>= fun () ->
-          S.remove t1 ~info:(infof "remove3") path3 >>= fun () ->
+          S.remove t1 ~info:(infof "remove1" ()) path1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.remove t1 ~info:(infof "remove2" ()) path2 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.remove t1 ~info:(infof "remove3" ()) path3 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
           Lwt.return_unit
         ) in
 
-      S.remove t1 ~info:(infof "clean") [] >>= fun () ->
+      S.remove t1 ~info:(infof "clean" ()) [] >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       S.Head.get t1 >>= fun init ->
 
       S.watch_key t1 ~init path1 (State.process state) >>= fun u ->
@@ -634,14 +672,24 @@ module Make (S: S) = struct
           let path1 = ["a"; "b"; "c"; string_of_int n; "1"] in
           let path2 = ["a"; "x"; "c"; string_of_int n; "1"] in
           let path3 = ["a"; "y"; "c"; string_of_int n; "1"] in
-          S.set t2 ~info:(infof "update1") path1 v >>= fun () ->
-          S.set t2 ~info:(infof "update2") path2 v >>= fun () ->
-          S.set t2 ~info:(infof "update3") path3 v >>= fun () ->
+          S.set t2 ~info:(infof "update1") path1 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.set t2 ~info:(infof "update2") path2 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+          S.set t2 ~info:(infof "update3") path3 v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
           Lwt.return_unit
         ) in
 
-      S.remove t1 ~info:(infof "remove") ["a"] >>= fun () ->
-      S.set t1 ~info:(infof "prepare") ["a";"b";"c"] "" >>= fun () ->
+      S.remove t1 ~info:(infof "remove" ()) ["a"] >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t1 ~info:(infof "prepare") ["a";"b";"c"] "" >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       S.Head.get t1 >>= fun h ->
       S.watch_key t2 ~init:h ["a";"b"] (State.process state) >>= fun u ->
@@ -904,7 +952,9 @@ module Make (S: S) = struct
       S.Head.find t >>= fun h ->
       check T.(option @@ S.commit_t repo) "empty" None h;
       r1 ~repo >>= fun r1 ->
-      S.set t ~info:Irmin.Info.none ["b"; "x"] v1 >>= fun () ->
+      S.set t ~info:Irmin.Info.none ["b"; "x"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Head.find t >>= fun h ->
       check T.(option @@ S.commit_t repo) "not empty" (Some r1) h;
       Lwt.return_unit
@@ -916,8 +966,12 @@ module Make (S: S) = struct
       S.master repo >>= fun t ->
       let a = "" in
       let b = "haha" in
-      S.set t ~info:(infof "slice") ["x";"a"] a >>= fun () ->
-      S.set t ~info:(infof "slice") ["x";"b"] b >>= fun () ->
+      S.set t ~info:(infof "slice") ["x";"a"] a >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t ~info:(infof "slice") ["x";"b"] b >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Repo.export repo >>= fun slice ->
       let str = T.to_json_string P.Slice.t slice in
       let slice' =
@@ -937,19 +991,27 @@ module Make (S: S) = struct
       let vx = "VX" in
       let vy = "VY" in
       S.master repo >>= fun t ->
-      S.set t ~info:(infof "add x/y/z") ["x";"y";"z"] vx >>= fun () ->
+      S.set t ~info:(infof "add x/y/z") ["x";"y";"z"] vx >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.get_tree t ["x"] >>= fun tree ->
-      S.set_tree t ~info:(infof "update") ["u"] tree >>= fun () ->
+      S.set_tree t ~info:(infof "update" ()) ["u"] tree >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find t ["u";"y";"z"] >>= fun vx' ->
       check_val "vx" (Some vx) vx';
 
       S.get_tree t ["u"] >>= fun tree1 ->
-      S.set t ~info:(infof "add u/x/y") ["u";"x";"y"] vy >>= fun () ->
+      S.set t ~info:(infof "add u/x/y") ["u";"x";"y"] vy >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.get_tree t ["u"] >>= fun tree2 ->
       S.Tree.add tree ["x";"z"] vx >>= fun tree3 ->
       Irmin.Merge.f S.Tree.merge ~old:(Irmin.Merge.promise tree1) tree2 tree3
       >>= merge_exn "tree" >>= fun v' ->
-      S.set_tree t ~info:(infof "merge") ["u"] v' >>= fun () ->
+      S.set_tree t ~info:(infof "merge" ()) ["u"] v' >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find t ["u";"x";"y"] >>= fun vy' ->
       check_val "vy after merge" (Some vy) vy';
 
@@ -964,7 +1026,9 @@ module Make (S: S) = struct
       let check_val = check T.(option S.contents_t) in
       let check_list = checks T.(pair S.Key.step_t S.kind_t) in
       S.master repo >>= fun t ->
-      S.set t ~info:(infof "init") ["a";"b"] v1 >>= fun () ->
+      S.set t ~info:(infof "init") ["a";"b"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.mem t ["a";"b"] >>= fun b0 ->
       Alcotest.(check bool) "mem0" true b0;
       S.clone ~src:t ~dst:"test" >>= fun t ->
@@ -978,7 +1042,9 @@ module Make (S: S) = struct
       S.Head.get t >>= fun r1 ->
       S.clone ~src:t ~dst:"test" >>= fun t ->
 
-      S.set t ~info:(infof "update") ["a";"c"] v2 >>= fun () ->
+      S.set t ~info:(infof "update") ["a";"c"] v2 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.mem t ["a";"b"] >>= fun b1 ->
       Alcotest.(check bool) "mem3" true b1;
       S.mem t ["a"] >>= fun b2 ->
@@ -990,7 +1056,9 @@ module Make (S: S) = struct
       S.find t ["a";"c"] >>= fun v2' ->
       check_val "v1.1" (Some v2) v2';
 
-      S.remove t ~info:(infof "remove") ["a";"b"] >>= fun () ->
+      S.remove t ~info:(infof "remove" ()) ["a";"b"] >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find t ["a";"b"] >>= fun v1''->
       check_val "v1.2" None v1'';
       S.Head.set t r1 >>= fun () ->
@@ -1000,15 +1068,21 @@ module Make (S: S) = struct
       check_list "path" ["b", `Contents] ks;
 
       S.set t ~info:(infof "update2") ["a"; long_random_ascii_string] v1
-      >>= fun () ->
+      >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
-      S.remove t ~info:(infof "remove rec") ["a"] >>= fun () ->
+      S.remove t ~info:(infof "remove rec" ()) ["a"] >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.list t [] >>= fun dirs ->
       check_list "remove rec" [] dirs;
 
       Lwt.catch
         (fun () ->
-           S.set t ~info:(infof "update root") [] v1 >>= fun () ->
+           S.set t ~info:(infof "update root") [] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
            Alcotest.fail "update root")
         (function
           | Invalid_argument _ -> Lwt.return_unit
@@ -1017,23 +1091,33 @@ module Make (S: S) = struct
       S.find t [] >>= fun none ->
       check_val "read root" none None;
 
-      S.set t ~info:(infof "update") ["a"] v1 >>= fun () ->
-      S.remove t ~info:(infof "remove rec --all") [] >>= fun () ->
+      S.set t ~info:(infof "update") ["a"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.remove t ~info:(infof "remove rec --all" ()) [] >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.list t [] >>= fun dirs ->
       check_list "remove rec root" [] dirs;
 
       let a = "ok" in
       let b = "maybe?" in
 
-      S.set t ~info:(infof "fst one") ["fst"] a        >>= fun () ->
-      S.set t ~info:(infof "snd one") ["fst"; "snd"] b >>= fun () ->
+      S.set t ~info:(infof "fst one") ["fst"] a        >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
+      S.set t ~info:(infof "snd one") ["fst"; "snd"] b >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       S.find t ["fst"] >>= fun fst ->
       check_val "data model 1" None fst;
       S.find t ["fst"; "snd"] >>= fun snd ->
       check_val "data model 2" (Some b) snd;
 
-      S.set t ~info:(infof "fst one") ["fst"] a >>= fun () ->
+      S.set t ~info:(infof "fst one") ["fst"] a >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       S.find t ["fst"] >>= fun fst ->
       check_val "data model 3" (Some a) fst;
@@ -1048,7 +1132,9 @@ module Make (S: S) = struct
       S.Branch.remove repo tagx >>= fun () ->
       S.Branch.remove repo tagy >>= fun () ->
 
-      S.set tx ~info:(infof "update") xy vx >>= fun () ->
+      S.set tx ~info:(infof "update") xy vx >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.clone ~src:tx ~dst:tagy >>= fun ty ->
       S.find ty xy >>= fun vx' ->
       check_val "update tag" (Some vx) vx';
@@ -1092,7 +1178,9 @@ module Make (S: S) = struct
       S.Tree.stats v1 >>= fun s ->
       Alcotest.(check stats_t) "empty stats" empty_stats s;
 
-      S.set_tree t ~info:(infof "empty tree") [] v1 >>= fun () ->
+      S.set_tree t ~info:(infof "empty tree" ()) [] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Head.get t >>= fun head ->
       S.Commit.hash head |> fun head ->
       P.Commit.find (ct repo) head >>= fun commit ->
@@ -1191,8 +1279,12 @@ module Make (S: S) = struct
         ) v0 nodes >>= fun v0 ->
       check_tree v0 >>= fun () ->
 
-      S.set_tree t ~info:(infof "update_path b/") ["b"] v0 >>= fun () ->
-      S.set_tree t ~info:(infof "update_path a/") ["a"] v0 >>= fun () ->
+      S.set_tree t ~info:(infof "update_path b/" ()) ["b"] v0 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set_tree t ~info:(infof "update_path a/" ()) ["a"] v0 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       S.list t ["b";"foo"] >>= fun ls ->
       check_ls "path2" [ "1", `Contents; "2", `Contents] ls;
@@ -1204,14 +1296,18 @@ module Make (S: S) = struct
       S.get_tree t ["b"] >>= fun v0 ->
       check_tree v0 >>= fun () ->
 
-      S.set t ~info:(infof "update b/x") ["b";"x"] foo1 >>= fun () ->
+      S.set t ~info:(infof "update b/x") ["b";"x"] foo1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.get_tree t ["b"] >>= fun v2 ->
       S.Tree.add v0 ["y"] foo2 >>= fun v1 ->
 
       Irmin.Merge.(f S.Tree.merge ~old:(promise v0) v1 v2) >>=
       merge_exn "merge trees" >>= fun v' ->
 
-      S.set_tree t ~info:(infof "merge_path") ["b"] v' >>= fun () ->
+      S.set_tree t ~info:(infof "merge_path" ()) ["b"] v' >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find_all t ["b";"x"] >>= fun foo1' ->
       S.find_all t ["b";"y"] >>= fun foo2' ->
       check_val "merge: b/x" (normal foo1) foo1';
@@ -1228,14 +1324,18 @@ module Make (S: S) = struct
       S.get_tree t ["b"] >>= fun v2 ->
       S.Tree.find_all v2 ["foo"; "1"] >>= fun _ ->
       S.Tree.add v2 ["foo"; "1"] foo2 >>= fun v2 ->
-      S.set_tree t ~info:(infof"v2") ["b"] v2 >>= fun () ->
+      S.set_tree t ~info:(infof"v2" ()) ["b"] v2 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find_all t ["b";"foo";"1"] >>= fun foo2' ->
       check_val "update tree" (normal foo2) foo2';
 
       S.get_tree t ["b"] >>= fun v3 ->
       S.Tree.find_all v3 ["foo"; "1"] >>= fun _ ->
       S.Tree.remove v3 ["foo"; "1"] >>= fun v3 ->
-      S.set_tree t ~info:(infof "v3") ["b"] v3 >>= fun () ->
+      S.set_tree t ~info:(infof "v3" ()) ["b"] v3 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find_all t ["b";"foo";"1"] >>= fun foo2' ->
       check_val "remove tree" None foo2';
 
@@ -1259,7 +1359,9 @@ module Make (S: S) = struct
 
       let vx = "VX" in
       let px = ["x";"y";"z"] in
-      S.set tt ~info:(infof "update") px vx >>= fun () ->
+      S.set tt ~info:(infof "update") px vx >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.get_tree tt [] >>= fun tree ->
       S.Tree.clear_caches tree;
 
@@ -1276,7 +1378,9 @@ module Make (S: S) = struct
 
       S.Tree.empty |> fun v ->
       S.Tree.add v [] vx >>= fun v ->
-      S.set_tree t ~info:(infof "update file as tree") ["a"] v >>= fun () ->
+      S.set_tree t ~info:(infof "update file as tree" ()) ["a"] v >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.find_all t ["a"] >>= fun vx' ->
       check_val "update file as tree" (normal vx) vx';
       Lwt.return_unit
@@ -1289,12 +1393,18 @@ module Make (S: S) = struct
     let test repo =
       S.master repo >>= fun t1 ->
 
-      S.set t1 ~info:(infof "update a/b") ["a";"b"] v1 >>= fun () ->
+      S.set t1 ~info:(infof "update a/b") ["a";"b"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Head.get t1 >>= fun h ->
       S.Head.get t1 >>= fun _r1 ->
-      S.set t1 ~info:(infof "update a/c") ["a";"c"] v2 >>= fun () ->
+      S.set t1 ~info:(infof "update a/c") ["a";"c"] v2 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Head.get t1 >>= fun r2 ->
-      S.set t1 ~info:(infof "update a/d") ["a";"d"] v1 >>= fun () ->
+      S.set t1 ~info:(infof "update a/d") ["a";"d"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
       S.Head.get t1 >>= fun _r3 ->
 
       S.history t1 ~min:[h] >>= fun h ->
@@ -1356,20 +1466,34 @@ module Make (S: S) = struct
 
       S.master repo >>= fun t1 ->
 
-      S.set t1 ~info:(infof "update a/b/a") ["a";"b";"a"] v1 >>= fun () ->
-      S.set t1 ~info:(infof "update a/b/b") ["a";"b";"b"] v2 >>= fun () ->
-      S.set t1 ~info:(infof "update a/b/c") ["a";"b";"c"] v3 >>= fun () ->
+      S.set t1 ~info:(infof "update a/b/a") ["a";"b";"a"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t1 ~info:(infof "update a/b/b") ["a";"b";"b"] v2 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t1 ~info:(infof "update a/b/c") ["a";"b";"c"] v3 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       let test = "test" in
 
       S.clone ~src:t1 ~dst:test >>= fun t2 ->
 
-      S.set t1 ~info:(infof "update master:a/b/b") ["a";"b";"b"] v1 >>= fun () ->
-      S.set t1 ~info:(infof "update master:a/b/b") ["a";"b";"b"] v3 >>= fun () ->
-      S.set t2 ~info:(infof "update test:a/b/c")   ["a";"b";"c"] v1 >>= fun () ->
+      S.set t1 ~info:(infof "update master:a/b/b") ["a";"b";"b"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t1 ~info:(infof "update master:a/b/b") ["a";"b";"b"] v3 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
+      S.set t2 ~info:(infof "update test:a/b/c")   ["a";"b";"c"] v1 >>= function
+          | Error _ -> Lwt.fail_with "error while writing"
+          | Ok () ->
 
       output_file t1 "before" >>= fun () ->
-      S.merge ~info:(infof "merge test into master") t2 ~into:t1 >>= fun m ->
+      S.merge ~info:(infof "merge test into master") t2 ~into:t1 >>= function
+      | Error _ -> Lwt.fail_with "error while writing"
+      | Ok () ->
       merge_exn "m" m >>= fun () ->
       output_file t1 "after" >>= fun () ->
 

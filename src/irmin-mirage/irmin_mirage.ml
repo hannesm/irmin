@@ -128,8 +128,8 @@ module Git = struct
         | Some tree ->
           (* XXX(samoht): it shouldn't be blocking here and it the
              t.repo shouldn't be there. Need the RAO changes first. *)
-          S.Tree.hash t.repo tree >|= fun h ->
-          Ok (Irmin.Type.to_string S.Tree.hash_t h)
+          let h = S.Tree.hash tree in
+          Lwt.return (Ok (Irmin.Type.to_string S.Tree.hash_t h))
 
       let list t key =
         Lwt.catch (fun () ->
