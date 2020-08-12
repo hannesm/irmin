@@ -59,7 +59,11 @@ module Store : sig
     | Fixed_hash of (contents -> t)
     | Variable_hash of (hash -> contents -> t)
 
-  type remote_fn = ?headers:Cohttp.Header.t -> string -> Irmin.remote
+  type remote_fn =
+    ?resolvers:Conduit.resolvers ->
+    ?headers:Cohttp.Header.t ->
+    string ->
+    Irmin.remote
 
   val v : ?remote:remote_fn -> (module Irmin.S) -> t
 

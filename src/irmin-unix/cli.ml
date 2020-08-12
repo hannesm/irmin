@@ -121,30 +121,44 @@ let init =
                let spec = HTTP.v (S.repo t) in
                match Uri.scheme uri with
                | Some "launchd" ->
-                   let uri, name =
+                   let uri, _name =
                      match Uri.host uri with
                      | None -> (Uri.with_host uri (Some "Listener"), "Listener")
                      | Some name -> (uri, name)
                    in
                    Logs.info (fun f -> f "daemon: %s" (Uri.to_string uri));
-                   Cohttp_lwt_unix.Server.create ~timeout:3600
-                     ~mode:(`Launchd name) spec
+                   assert false
+                   (* TODO(dinosaure) *)
+                   (* Cohttp_lwt_unix.Server.create ~timeout:3600
+                      ~mode:(`Launchd name) spec *)
                | _ ->
-                   let uri =
+                   let inet_addr =
                      match Uri.host uri with
-                     | None -> Uri.with_host uri (Some "localhost")
-                     | Some _ -> uri
+                     | None -> Unix.inet_addr_loopback
+                     | Some host -> (
+                         match Unix.gethostbyname host with
+                         | { h_addr_list; _ } when Array.length h_addr_list > 0
+                           ->
+                             h_addr_list.(0)
+                         | _ -> Fmt.failwith "Invalid host: %s" host)
                    in
-                   let port, uri =
-                     match Uri.port uri with
-                     | None -> (8080, Uri.with_port uri (Some 8080))
-                     | Some p -> (p, uri)
+                   let port =
+                     match Uri.port uri with None -> 8080 | Some port -> port
                    in
-                   Logs.info (fun f -> f "daemon: %s" (Uri.to_string uri));
+                   Logs.info (fun f ->
+                       f "daemon: %s:%d"
+                         (Unix.string_of_inet_addr inet_addr)
+                         port);
+                   let cfg =
+                     {
+                       Conduit_lwt.TCP.sockaddr =
+                         Unix.ADDR_INET (inet_addr, port);
+                       capacity = 40;
+                     }
+                   in
                    Printf.printf "Server starting on port %d.\n%!" port;
-                   Cohttp_lwt_unix.Server.create ~timeout:3600
-                     ~mode:(`TCP (`Port port))
-                     spec)
+                   Cohttp_lwt_unix.Server.create ~timeout:3600 cfg
+                     Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec)
              else Lwt.return_unit )
        in
        Term.(mk init $ store $ daemon $ uri));
@@ -316,7 +330,7 @@ let remove =
 
 let apply e f =
   match (e, f) with
-  | R (h, e), Some f -> f ?headers:h e
+  | R (h, e), Some f -> f ?resolvers:None (* TODO *) ?headers:h e
   | R _, None -> Fmt.failwith "invalid remote for that kind of store"
   | r, _ -> r
 
@@ -678,14 +692,23 @@ let graphql =
             in
            store >>= fun t ->
            let server = Server.v (S.repo t) in
-           Conduit_lwt_unix.init ~src:addr () >>= fun ctx ->
-           let ctx = Cohttp_lwt_unix.Net.init ~ctx () in
+           let inet_addr =
+             match Unix.gethostbyname addr with
+             | { Unix.h_addr_list; _ } when Array.length h_addr_list > 0 ->
+                 h_addr_list.(0)
+             | _ -> Fmt.failwith "Invalid host: %s" addr
+           in
+           let cfg =
+             {
+               Conduit_lwt.TCP.sockaddr = Unix.ADDR_INET (inet_addr, port);
+               capacity = 40;
+             }
+           in
            let on_exn exn =
              Logs.debug (fun l -> l "on_exn: %s" (Printexc.to_string exn))
            in
-           Cohttp_lwt_unix.Server.create ~on_exn ~ctx
-             ~mode:(`TCP (`Port port))
-             server)
+           Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
+             Conduit_lwt.TCP.service server)
        in
        Term.(mk graphql $ store $ port $ addr));
   }

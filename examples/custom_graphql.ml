@@ -110,10 +110,15 @@ let main () =
   let server = Server.v repo in
   let src = "localhost" in
   let port = 9876 in
-  Conduit_lwt_unix.init ~src () >>= fun ctx ->
-  let ctx = Cohttp_lwt_unix.Net.init ~ctx () in
   let on_exn exn = Printf.printf "on_exn: %s" (Printexc.to_string exn) in
   Printf.printf "Visit GraphiQL @ http://%s:%d/graphql\n%!" src port;
-  Cohttp_lwt_unix.Server.create ~on_exn ~ctx ~mode:(`TCP (`Port port)) server
+  let cfg =
+    {
+      Conduit_lwt.TCP.sockaddr = Unix.ADDR_INET (Unix.inet_addr_loopback, port);
+      capacity = 40;
+    }
+  in
+  Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
+    Conduit_lwt.TCP.service server
 
 let () = Lwt_main.run (main ())

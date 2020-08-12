@@ -1,4 +1,5 @@
 (library
  (name irmin_http)
  (public_name irmin-http)
- (libraries astring cohttp cohttp-lwt fmt irmin jsonm logs lwt uri webmachine))
+ (libraries conduit astring cohttp cohttp-lwt fmt irmin jsonm logs lwt uri
+   webmachine))

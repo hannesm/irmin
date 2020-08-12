@@ -128,7 +128,7 @@ module type APPEND_ONLY_STORE_MAKER = functor
   APPEND_ONLY_STORE
     with type key = K.t
      and type value = V.t
-     and type ctx = Client.ctx
+     and type ctx = Client.resolvers
 
 module type ATOMIC_WRITE_STORE = sig
   include Irmin.ATOMIC_WRITE_STORE
@@ -153,5 +153,5 @@ module type ATOMIC_WRITE_STORE_MAKER = functor
     ATOMIC_WRITE_STORE
       with type key = K.t
        and type value = V.t
-       and type ctx = Client.ctx
+       and type ctx = Client.resolvers
 end

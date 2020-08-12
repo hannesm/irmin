@@ -17,13 +17,16 @@
 module HTTP = struct
   include Cohttp_lwt_unix.Client
 
-  let ctx () =
-    let resolver =
-      let h = Hashtbl.create 1 in
-      Hashtbl.add h "irmin" (`Unix_domain_socket "/var/run/irmin.sock");
-      Resolver_lwt_unix.static h
+  let resolvers () =
+    let resolver domain_name =
+      if Domain_name.to_string domain_name = "irmin" then
+        Lwt.return (Some (Unix.ADDR_UNIX "/var/run/irmin.sock"))
+      else Lwt.return None
     in
-    Some (Cohttp_lwt_unix.Client.custom_ctx ~resolver ())
+    let resolvers =
+      Conduit_lwt.add Conduit_lwt.TCP.protocol resolver Conduit.empty
+    in
+    Some resolvers
 end
 
 module Client = Irmin_http.Client (HTTP)

@@ -1,9 +1,10 @@
 module type S = sig
-  include Irmin_git.S with type Private.Sync.endpoint = Git_mirage.endpoint
+  include
+    Irmin_git.S
+      with type Private.Sync.endpoint = Conduit.resolvers * Smart_git.endpoint
 
   val remote :
-    ?conduit:Conduit_mirage.conduit ->
-    ?resolver:Resolver_lwt.t ->
+    ?resolvers:Conduit.resolvers ->
     ?headers:Cohttp.Header.t ->
     string ->
     Irmin.remote
@@ -54,8 +55,7 @@ module type KV_RO = sig
     ?depth:int ->
     ?branch:string ->
     ?root:key ->
-    ?conduit:Conduit_mirage.t ->
-    ?resolver:Resolver_lwt.t ->
+    ?resolvers:Conduit.resolvers ->
     ?headers:Cohttp.Header.t ->
     git ->
     string ->
@@ -79,8 +79,7 @@ module type KV_RW = sig
     ?depth:int ->
     ?branch:string ->
     ?root:key ->
-    ?conduit:Conduit_mirage.t ->
-    ?resolver:Resolver_lwt.t ->
+    ?resolvers:Conduit.resolvers ->
     ?headers:Cohttp.Header.t ->
     ?author:(unit -> string) ->
     ?msg:([ `Set of key | `Remove of key | `Batch ] -> string) ->

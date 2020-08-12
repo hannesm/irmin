@@ -1,7 +1,7 @@
 (library
  (name test_http)
  (modules test_http)
- (libraries alcotest cohttp-lwt cohttp-lwt-unix conduit conduit-lwt-unix fmt
+ (libraries alcotest cohttp-lwt cohttp-lwt-unix conduit conduit-lwt fmt
    irmin-test test_mem test_git irmin irmin-http logs lwt lwt.unix uri))
 
 (executable

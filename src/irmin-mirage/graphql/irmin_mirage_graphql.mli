@@ -4,14 +4,18 @@ module Server : sig
 
     module Http : Cohttp_lwt.S.Server
 
-    module Store : Irmin.S with type Private.Sync.endpoint = Git_mirage.endpoint
+    module Store :
+      Irmin.S
+        with type Private.Sync.endpoint = Conduit.resolvers * Smart_git.endpoint
 
     val start : http:(Http.t -> unit Lwt.t) -> Store.repo -> unit Lwt.t
   end
 
   module Make
       (Http : Cohttp_lwt.S.Server)
-      (Store : Irmin.S with type Private.Sync.endpoint = Git_mirage.endpoint)
+      (Store : Irmin.S
+                 with type Private.Sync.endpoint =
+                       Conduit.resolvers * Smart_git.endpoint)
       (Pclock : Mirage_clock.PCLOCK) :
     S
       with module Pclock = Pclock

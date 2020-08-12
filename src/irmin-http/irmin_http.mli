@@ -23,7 +23,7 @@ val uri : Uri.t option Irmin.Private.Conf.key
 module type HTTP_CLIENT = sig
   include Cohttp_lwt.S.Client
 
-  val ctx : unit -> ctx option
+  val resolvers : unit -> resolvers option
 end
 
 module Client (C : HTTP_CLIENT) (S : Irmin.S) :

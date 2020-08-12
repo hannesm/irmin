@@ -12,19 +12,28 @@ module Server =
     end)
     (Store)
 
-let host, port = ("0.0.0.0", 37634)
+let port = 37634
+
+let resolvers =
+  Conduit_lwt.add Conduit_lwt.TCP.protocol
+    (Conduit_lwt.TCP.resolve ~port)
+    Conduit_lwt.empty
 
 (** Create a GraphQL server over the supplied Irmin repository, returning the
     event loop thread. *)
 let server_of_repo : type a. Store.repo -> a Lwt.t =
  fun repo ->
   let server = Server.v repo in
-  Conduit_lwt_unix.init ~src:host () >>= fun ctx ->
-  let ctx = Cohttp_lwt_unix.Net.init ~ctx ()
-  and on_exn = raise
-  and mode = `TCP (`Port port) in
-  Cohttp_lwt_unix.Server.create ~ctx ~on_exn ~mode server >>= fun () ->
-  Lwt.fail_with "GraphQL server terminated unexpectedly"
+  let on_exn = raise in
+  let cfg =
+    {
+      Conduit_lwt.TCP.sockaddr = Unix.ADDR_INET (Unix.inet_addr_any, port);
+      Conduit_lwt.TCP.capacity = 40;
+    }
+  in
+  Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
+    Conduit_lwt.TCP.service server
+  >>= fun () -> Lwt.fail_with "GraphQL server terminated unexpectedly"
 
 type server = {
   event_loop : 'a. 'a Lwt.t;
@@ -51,8 +60,8 @@ let send_query : string -> (string, [ `Msg of string ]) result Lwt.t =
     Yojson.Safe.to_string (`Assoc [ ("query", `String query) ])
     |> Cohttp_lwt.Body.of_string
   in
-  Cohttp_lwt_unix.Client.post ~headers ~body
-    (Uri.make ~scheme:"http" ~host ~port ~path:"graphql" ())
+  Cohttp_lwt_unix.Client.post ~resolvers ~headers ~body
+    (Uri.make ~scheme:"http" ~host:"localhost" ~port ~path:"graphql" ())
   >>= fun (response, body) ->
   let status = Cohttp_lwt.Response.status response in
   Cohttp_lwt.Body.to_string body >|= fun body ->

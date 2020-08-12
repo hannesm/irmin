@@ -41,25 +41,21 @@ val dot_git : string option Irmin.Private.Conf.key
 module Content_addressable (G : Git.S) (V : Irmin.Type.S) :
   Irmin.CONTENT_ADDRESSABLE_STORE
     with type 'a t = bool ref * G.t
-     and type key = G.Hash.t
+     and type key = G.hash
      and type value = V.t
 
 module Atomic_write (G : Git.S) (K : Irmin.Branch.S) :
-  Irmin.ATOMIC_WRITE_STORE with type key = K.t and type value = G.Hash.t
+  Irmin.ATOMIC_WRITE_STORE with type key = K.t and type value = G.hash
 
 module type G = sig
   include Git.S
 
-  val v :
-    ?dotgit:Fpath.t ->
-    ?compression:int ->
-    ?buffers:buffer Lwt_pool.t ->
-    Fpath.t ->
-    (t, error) result Lwt.t
+  val v : ?dotgit:Fpath.t -> Fpath.t -> (t, error) result Lwt.t
 end
 
-module Mem : G with type Hash.t = Digestif.SHA1.t
 (** In-memory Git store. *)
+module Mem :
+  G with type t = Digestif.SHA1.t Git.Mem.t and type hash = Digestif.SHA1.t
 
 module type S = sig
   (** The Git backend specializes a few types:
@@ -70,7 +66,7 @@ module type S = sig
   module Git : Git.S
   (** Access to the underlying Git store. *)
 
-  include Irmin.S with type metadata = Metadata.t and type hash = Git.Hash.t
+  include Irmin.S with type metadata = Metadata.t and type hash = Git.hash
 
   val git_commit : Repo.t -> commit -> Git.Value.Commit.t option Lwt.t
   (** [git_commit repo h] is the commit corresponding to [h] in the repository
@@ -90,7 +86,7 @@ end
 
 module type S_MAKER = functor
   (G : G)
-  (S : Git.Sync.S with module Store := G)
+  (S : Git.Sync.S with type hash = G.hash and type store = G.t)
   (C : Irmin.Contents.S)
   (P : Irmin.Path.S)
   (B : Irmin.Branch.S)
@@ -102,11 +98,11 @@ module type S_MAKER = functor
      and type contents = C.t
      and type branch = B.t
      and module Git = G
-     and type Private.Sync.endpoint = S.Endpoint.t
+     and type Private.Sync.endpoint = Conduit.resolvers * Smart_git.endpoint
 
 module type KV_MAKER = functor
   (G : G)
-  (S : Git.Sync.S with module Store := G)
+  (S : Git.Sync.S with type hash = G.hash and type store = G.t)
   (C : Irmin.Contents.S)
   ->
   S
@@ -115,14 +111,14 @@ module type KV_MAKER = functor
      and type contents = C.t
      and type branch = string
      and module Git = G
-     and type Private.Sync.endpoint = S.Endpoint.t
+     and type Private.Sync.endpoint = Conduit.resolvers * Smart_git.endpoint
 
 type reference =
   [ `Branch of string | `Remote of string | `Tag of string | `Other of string ]
 
 module type REF_MAKER = functor
   (G : G)
-  (S : Git.Sync.S with module Store := G)
+  (S : Git.Sync.S with type hash = G.hash and type store = G.t)
   (C : Irmin.Contents.S)
   ->
   S
@@ -131,7 +127,7 @@ module type REF_MAKER = functor
      and type contents = C.t
      and type branch = reference
      and module Git = G
-     and type Private.Sync.endpoint = S.Endpoint.t
+     and type Private.Sync.endpoint = Conduit.resolvers * Smart_git.endpoint
 
 module Make : S_MAKER
 
@@ -153,7 +149,7 @@ module Reference : BRANCH with type t = reference
 
 module Make_ext
     (G : G)
-    (S : Git.Sync.S with module Store := G)
+    (S : Git.Sync.S with type hash := G.hash and type store := G.t)
     (C : Irmin.Contents.S)
     (P : Irmin.Path.S)
     (B : BRANCH) :

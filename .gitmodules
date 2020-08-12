@@ -1,0 +1,16 @@
+[submodule "encore"]
+	path = encore
+	url = https://github.com/mirage/encore.git
+	branch = fix-encore
+[submodule "ocaml-git"]
+	path = ocaml-git
+	url = https://github.com/dinosaure/ocaml-git.git
+	branch = ng
+[submodule "ocaml-conduit"]
+	path = _ocaml-conduit
+	url = https://github.com/dinosaure/ocaml-conduit.git
+	branch = 3.0.0
+[submodule "ocaml-cohttp"]
+	path = _ocaml-cohttp
+	url = https://github.com/dinosaure/ocaml-cohttp.git
+	branch = conduit-3.0.0

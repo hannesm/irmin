@@ -36,7 +36,12 @@ module Result = struct
 end
 
 module type CONFIG = sig
-  val remote : (?headers:Cohttp.Header.t -> string -> Irmin.remote) option
+  val remote :
+    (?resolvers:Conduit.resolvers ->
+    ?headers:Cohttp.Header.t ->
+    string ->
+    Irmin.remote)
+    option
 
   val info :
     ?author:string -> ('a, Format.formatter, unit, Irmin.Info.f) format4 -> 'a

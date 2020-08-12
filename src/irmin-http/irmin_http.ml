@@ -112,8 +112,8 @@ let of_json = Irmin.Type.of_json_string
 let to_json = Irmin.Type.to_json_string
 
 module Helper (Client : Cohttp_lwt.S.Client) :
-  S.HELPER with type ctx = Client.ctx = struct
-  type ctx = Client.ctx
+  S.HELPER with type ctx = Client.resolvers = struct
+  type ctx = Client.resolvers
 
   let err_bad_version v =
     invalid_arg "bad server version: expecting %s, but got %s" Irmin.version
@@ -171,7 +171,7 @@ module Helper (Client : Cohttp_lwt.S.Client) :
     Log.debug (fun f ->
         f "%s %s" (Cohttp.Code.string_of_method meth) (Uri.path uri));
     Lwt.catch
-      (fun () -> Client.call ?ctx meth ~headers ?body uri >>= fn)
+      (fun () -> Client.call ?resolvers:ctx meth ~headers ?body uri >>= fn)
       (fun e ->
         Log.debug (fun l ->
             l "request to %a failed: %a" Uri.pp_hum uri Fmt.exn e);
@@ -186,10 +186,10 @@ end
 
 module RO (Client : Cohttp_lwt.S.Client) (K : Irmin.Type.S) (V : Irmin.Type.S) :
   S.READ_ONLY_STORE
-    with type ctx = Client.ctx
+    with type ctx = Client.resolvers
      and type key = K.t
      and type value = V.t = struct
-  type ctx = Client.ctx
+  type ctx = Client.resolvers
 
   module HTTP = Helper (Client)
 
@@ -197,7 +197,7 @@ module RO (Client : Cohttp_lwt.S.Client) (K : Irmin.Type.S) (V : Irmin.Type.S) :
     uri : Uri.t;
     item : string;
     items : string;
-    ctx : Client.ctx option;
+    ctx : Client.resolvers option;
   }
 
   let uri t = t.uri
@@ -270,7 +270,7 @@ functor
 
     type watch = W.watch
 
-    type ctx = Client.ctx
+    type ctx = Client.resolvers
 
     (* cache the stream connections to the server: we open only one
        connection per stream kind. *)
@@ -407,7 +407,7 @@ functor
 module type HTTP_CLIENT = sig
   include Cohttp_lwt.S.Client
 
-  val ctx : unit -> ctx option
+  val resolvers : unit -> resolvers option
 end
 
 module Client (Client : HTTP_CLIENT) (S : Irmin.S) = struct
@@ -502,7 +502,7 @@ module Client (Client : HTTP_CLIENT) (S : Irmin.S) = struct
 
       let v config =
         let uri = get_uri config in
-        let ctx = Client.ctx () in
+        let ctx = Client.resolvers () in
         Contents.v ?ctx uri >>= fun contents ->
         Node.v ?ctx uri >>= fun node ->
         Commit.v ?ctx uri >>= fun commit ->

@@ -40,13 +40,12 @@ end) =
 struct
   include Cohttp_lwt_unix.Client
 
-  let ctx () =
-    let resolver =
-      let h = Hashtbl.create 1 in
-      Hashtbl.add h "irmin" (`Unix_domain_socket (socket P.id));
-      Resolver_lwt_unix.static h
+  let resolvers () =
+    let resolver _domain_name = Lwt.return (Some (Unix.ADDR_UNIX (socket P.id))) in
+    let resolvers =
+      Conduit_lwt.add Conduit_lwt.TCP.protocol resolver Conduit.empty
     in
-    Some (Cohttp_lwt_unix.Client.custom_ctx ~resolver ())
+    Some resolvers
 end
 
 let http_store id (module S : Irmin_test.S) =
@@ -128,11 +127,12 @@ let serve servers n id =
       (fun () -> Lwt_unix.unlink socket)
       (function Unix.Unix_error _ -> Lwt.return_unit | e -> Lwt.fail e)
     >>= fun () ->
-    let mode = `Unix_domain_socket (`File socket) in
-    Conduit_lwt_unix.set_max_active 100;
+    let cfg =
+      { Conduit_lwt.TCP.sockaddr = Unix.ADDR_UNIX socket; capacity = 100 }
+    in
     Cohttp_lwt_unix.Server.create
       ~on_exn:(Fmt.pr "Async exception caught: %a" Fmt.exn)
-      ~mode spec
+      cfg Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec
     >>= fun () -> unlock lock
   in
   Lwt_main.run (server ())
