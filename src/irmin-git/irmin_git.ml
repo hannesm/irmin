@@ -743,7 +743,10 @@ struct
     let _deepen = depth in
     (* FIXME: need to be exposed in the Git API *)
     let reference = git_of_branch br in
-    S.fetch ~resolvers e t (`Some [ reference ]) >>= function
+    let capabilities =
+      [ `Side_band_64k; `Multi_ack_detailed; `Ofs_delta; `Thin_pack
+      ; `Report_status ] in
+    S.fetch ~capabilities ~resolvers e t (`Some [ reference ]) >>= function
     | Error `Not_found -> Lwt.return (Error (`Msg "not found"))
     | Error (`Msg err) -> Lwt.return (Error (`Msg err))
     | Error (`Exn err) -> Lwt.return (Error (`Msg (Printexc.to_string err)))
@@ -764,7 +767,10 @@ struct
   let push t ?depth:_ (resolvers, e) br =
     Log.debug (fun f -> f "push %a" Smart_git.pp_endpoint e);
     let reference = git_of_branch br in
-    S.push ~resolvers e t [ `Update (reference, reference) ] >|= function
+    let capabilities =
+      [ `Side_band_64k; `Multi_ack_detailed; `Ofs_delta; `Thin_pack
+      ; `Report_status ] in
+    S.push ~capabilities ~resolvers e t [ `Update (reference, reference) ] >|= function
     | Error (`Msg err) -> Error (`Msg err)
     | Error (`Exn exn) -> Error (`Msg (Printexc.to_string exn))
     | Error `Not_found -> Error (`Msg "not found")
