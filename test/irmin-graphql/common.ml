@@ -32,7 +32,7 @@ let server_of_repo : type a. Store.repo -> a Lwt.t =
     }
   in
   Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
-    Conduit_lwt.TCP.service server
+    Conduit_lwt.TCP.service server ()
   >>= fun () -> Lwt.fail_with "GraphQL server terminated unexpectedly"
 
 type server = {

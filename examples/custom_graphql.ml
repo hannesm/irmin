@@ -102,7 +102,7 @@ end
 
 module Server =
   Irmin_unix.Graphql.Server.Make_ext (Store) (Remote) (Custom_types)
-
+ 
 let main () =
   Config.init ();
   let config = Irmin_git.config Config.root in
@@ -119,6 +119,6 @@ let main () =
     }
   in
   Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
-    Conduit_lwt.TCP.service server
+    Conduit_lwt.TCP.service server ()
 
 let () = Lwt_main.run (main ())

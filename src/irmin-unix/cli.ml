@@ -158,7 +158,7 @@ let init =
                    in
                    Printf.printf "Server starting on port %d.\n%!" port;
                    Cohttp_lwt_unix.Server.create ~timeout:3600 cfg
-                     Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec)
+                     Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec ())
              else Lwt.return_unit )
        in
        Term.(mk init $ store $ daemon $ uri));
@@ -708,7 +708,7 @@ let graphql =
              Logs.debug (fun l -> l "on_exn: %s" (Printexc.to_string exn))
            in
            Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
-             Conduit_lwt.TCP.service server)
+             Conduit_lwt.TCP.service server ())
        in
        Term.(mk graphql $ store $ port $ addr));
   }

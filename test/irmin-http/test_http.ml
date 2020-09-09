@@ -132,7 +132,7 @@ let serve servers n id =
     in
     Cohttp_lwt_unix.Server.create
       ~on_exn:(Fmt.pr "Async exception caught: %a" Fmt.exn)
-      cfg Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec
+      cfg Conduit_lwt.TCP.protocol Conduit_lwt.TCP.service spec ()
     >>= fun () -> unlock lock
   in
   Lwt_main.run (server ())

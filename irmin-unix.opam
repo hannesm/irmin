@@ -23,7 +23,7 @@ depends: [
   "irmin-fs"      {>= "2.0.0"}
   "irmin-pack"    {>= "2.0.0"}
   "irmin-graphql"
-  "git-unix"      {>= "1.11.4"}
+  "git-unix"
   "digestif"      {>= "0.6.1"}
   "irmin-watcher" {>= "0.2.0"}
   "yaml"          {>= "0.1.0"}
@@ -33,7 +33,6 @@ depends: [
   "cohttp-lwt"
   "conduit"
   "conduit-lwt"
-  "conduit-lwt-unix"
   "logs"
   "uri"
   "irmin-test"    {with-test & >= "2.0.0"}
@@ -45,3 +44,16 @@ description: """
 as a very simple CLI tool (called `irmin`) to manipulate and inspect Irmin
 stores.
 """
+
+pin-depends: [
+  [ "git-unix.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "git.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton-lwt.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton-git.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "nss.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "conduit.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#4dffc531e6dde24fcc6aec84bb453f5bea277e80" ]
+  [ "conduit-lwt.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#4dffc531e6dde24fcc6aec84bb453f5bea277e80" ]
+  [ "cohttp.dev" "git+https://github.com/dinosaure/ocaml-cohttp.git#63e6026178b8a8750837f343d386ad5445aa236d" ]
+  [ "cohttp-lwt.dev" "git+https://github.com/dinosaure/ocaml-cohttp.git#63e6026178b8a8750837f343d386ad5445aa236d" ]
+]

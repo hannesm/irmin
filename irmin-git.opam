@@ -17,7 +17,7 @@ depends: [
   "ocaml"      {>= "4.02.3"}
   "dune"       {>= "2.5.1"}
   "irmin"      {>= "2.0.0"}
-  "git"        {>= "2.1.1"}
+  "git"
   "digestif"   {>= "0.7.3"}
   "astring"
   "fpath"
@@ -26,7 +26,7 @@ depends: [
   "uri"
   "irmin-test" {with-test & >= "2.0.0"}
   "irmin-mem"  {with-test & >= "2.0.0"}
-  "git-unix"   {with-test & >= "2.1.1"}
+  "git-unix"   {with-test}
   "mtime"      {with-test & >= "1.0.0"}
 ]
 
@@ -35,3 +35,12 @@ description: """
 `Irmin_git` expose a bi-directional bridge between Git repositories and
 Irmin stores.
 """
+
+pin-depends: [
+  [ "git-unix.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "git.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton-lwt.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "carton-git.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+  [ "nss.dev" "git+https://github.com/mirage/ocaml-git.git#436e84defab9b41c6024d5462584e27fa3fb5f33" ]
+]
