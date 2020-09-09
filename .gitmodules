@@ -1,7 +1,3 @@
-[submodule "encore"]
-	path = encore
-	url = https://github.com/mirage/encore.git
-	branch = fix-encore
 [submodule "ocaml-git"]
 	path = ocaml-git
 	url = https://github.com/dinosaure/ocaml-git.git
