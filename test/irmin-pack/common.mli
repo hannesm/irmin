@@ -2,6 +2,24 @@ module Dict = Irmin_pack.Dict
 module H = Irmin.Hash.SHA1
 module I = Index
 
+module Filename : sig
+  include module type of Filename
+
+  val quote_command :
+    string ->
+    ?stdin:string ->
+    ?stdout:string ->
+    ?stderr:string ->
+    string list ->
+    string
+end
+
+module Alcotest : sig
+  include module type of Alcotest
+
+  val check_raises_lwt : string -> exn -> (unit -> _ Lwt.t) -> unit Lwt.t
+end
+
 module Index : Irmin_pack.Index.S with type key = H.t
 
 module Pack :
@@ -36,8 +54,18 @@ end) : sig
   val close : Index.t -> [ `Read ] Pack.t -> unit Lwt.t
 end
 
+val ( let* ) : 'a Lwt.t -> ('a -> 'b Lwt.t) -> 'b Lwt.t
+
 val get : 'a option -> 'a
 
 val sha1 : string -> H.t
 
 val rm_dir : string -> unit
+
+val index_log_size : int option
+
+module Conf : sig
+  val entries : int
+
+  val stable_hash : int
+end

@@ -39,6 +39,8 @@ module Index = Pack_index
 
 exception RO_Not_Allowed
 
+exception Unsupported_version of IO.version
+
 module type CONFIG = sig
   val entries : int
 
@@ -63,6 +65,19 @@ module type Stores_extra = sig
   val sync : repo -> unit
   (** [sync t] syncs a readonly pack with the files on disk. Raises
       [invalid_argument] if called by a read-write pack.*)
+
+  val clear : repo -> unit Lwt.t
+  (** [clear t] removes all the data persisted in [t]. This operations provides
+      snapshot isolation guarantees for read-only instances: read-only instance
+      will continue to see all the data until they explicitely call {!sync}. *)
+
+  val migrate : Irmin.config -> unit
+  (** [migrate conf] upgrades the repository with configuration [conf] to use
+      the latest storage format.
+
+      {b Note:} performing concurrent store operations during the migration, or
+      attempting to use pre-migration instances of the repository after the
+      migration is complete, will result in undefined behaviour. *)
 end
 
 module Make_ext
@@ -120,3 +135,7 @@ module Atomic_write (K : Irmin.Type.S) (V : Irmin.Hash.S) : sig
 end
 
 module Stats = Stats
+
+module Private : sig
+  module Utils = Utils
+end

@@ -1,6 +1,14 @@
 open Lwt.Infix
 module Store = Irmin_mem.KV (Irmin.Contents.String)
 
+let ( / ) = Filename.concat
+
+let http_graphql_dir = "test-graphql"
+
+let socket = http_graphql_dir / "irmin.sock"
+
+let host = "irmin"
+
 module Server =
   Irmin_graphql.Server.Make
     (Cohttp_lwt_unix.Server)
@@ -12,28 +20,34 @@ module Server =
     end)
     (Store)
 
-let port = 37634
-
 let resolvers =
   Conduit_lwt.add Conduit_lwt.TCP.protocol
-    (Conduit_lwt.TCP.resolve ~port)
+    (fun _domain_name -> Lwt.return_some (Unix.ADDR_UNIX socket))
     Conduit_lwt.empty
+
+let mkdir d =
+  Lwt.catch
+    (fun () -> Lwt_unix.mkdir d 0o755)
+    (function
+      | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return_unit | e -> Lwt.fail e)
 
 (** Create a GraphQL server over the supplied Irmin repository, returning the
     event loop thread. *)
 let server_of_repo : type a. Store.repo -> a Lwt.t =
  fun repo ->
   let server = Server.v repo in
+  Lwt.catch
+    (fun () -> Lwt_unix.unlink socket)
+    (function Unix.Unix_error _ -> Lwt.return_unit | e -> Lwt.fail e)
+  >>= fun () ->
+  mkdir http_graphql_dir >>= fun () ->
   let on_exn = raise in
   let cfg =
-    {
-      Conduit_lwt.TCP.sockaddr = Unix.ADDR_INET (Unix.inet_addr_any, port);
-      Conduit_lwt.TCP.capacity = 40;
-    }
-  in
+    { Conduit_lwt.TCP.sockaddr= Unix.ADDR_UNIX socket
+    ; Conduit_lwt.TCP.capacity= 40 } in
   Cohttp_lwt_unix.Server.create ~on_exn cfg Conduit_lwt.TCP.protocol
-    Conduit_lwt.TCP.service server ()
-  >>= fun () -> Lwt.fail_with "GraphQL server terminated unexpectedly"
+    Conduit_lwt.TCP.service server () >>= fun () ->
+  Lwt.fail_with "GraphQL server terminated unexpectedly"
 
 type server = {
   event_loop : 'a. 'a Lwt.t;
@@ -51,6 +65,15 @@ let spawn_graphql_server () =
   in
   { event_loop; set_tree }
 
+let rec retry n f =
+  let retries = ref 0 in
+  Lwt.catch f (fun e ->
+      if n = 0 then Lwt.fail e
+      else
+        Lwt_unix.sleep (0.1 *. float !retries) >>= fun () ->
+        incr retries;
+        retry (n + 1) f)
+
 (** Issue a query to the localhost server and return the body of the response
     message *)
 let send_query : string -> (string, [ `Msg of string ]) result Lwt.t =
@@ -60,8 +83,9 @@ let send_query : string -> (string, [ `Msg of string ]) result Lwt.t =
     Yojson.Safe.to_string (`Assoc [ ("query", `String query) ])
     |> Cohttp_lwt.Body.of_string
   in
-  Cohttp_lwt_unix.Client.post ~resolvers ~headers ~body
-    (Uri.make ~scheme:"http" ~host:"localhost" ~port ~path:"graphql" ())
+  retry 10 (fun () ->
+      Cohttp_lwt_unix.Client.post ~resolvers ~headers ~body
+        (Uri.make ~scheme:"http" ~host ~path:"graphql" ()))
   >>= fun (response, body) ->
   let status = Cohttp_lwt.Response.status response in
   Cohttp_lwt.Body.to_string body >|= fun body ->

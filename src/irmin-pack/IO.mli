@@ -14,12 +14,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+type version = [ `V1 | `V2 ]
+
+val pp_version : version Fmt.t
+
+exception Invalid_version of { expected : version; found : version }
+
+type path := string
+
 module type S = sig
   type t
 
   exception RO_Not_Allowed
 
-  val v : fresh:bool -> version:string -> readonly:bool -> string -> t
+  val v : version:version option -> fresh:bool -> readonly:bool -> path -> t
 
   val name : t -> string
 
@@ -35,20 +43,35 @@ module type S = sig
 
   val force_offset : t -> int64
 
+  val generation : t -> int64
+
+  val force_generation : t -> int64
+
   val readonly : t -> bool
 
-  val version : t -> string
+  val version : t -> version
 
   val flush : t -> unit
 
   val close : t -> unit
+
+  val migrate :
+    progress:(int64 -> unit) ->
+    t ->
+    version ->
+    (unit, [> `Msg of string ]) result
+  (** @raise Invalid_arg if the migration path is not supported. *)
 end
 
 module Unix : S
 
-val with_cache :
-  v:('a -> fresh:bool -> readonly:bool -> string -> 'b) ->
-  clear:('b -> unit) ->
-  valid:('b -> bool) ->
-  string ->
-  [ `Staged of 'a -> ?fresh:bool -> ?readonly:bool -> string -> 'b ]
+module Cache : sig
+  type ('a, 'v) t = { v : 'a -> ?fresh:bool -> ?readonly:bool -> string -> 'v }
+
+  val memoize :
+    v:('a -> fresh:bool -> readonly:bool -> string -> 'v) ->
+    clear:('v -> unit) ->
+    valid:('v -> bool) ->
+    string ->
+    ('a, 'v) t
+end

@@ -4,6 +4,9 @@
 
 - **irmin-pack***
   - Fix a major bug in the LRU which was never used (#1035, @samoht)
+  
+- **irmin***
+  - Improve performance of `last_modified` (#948, @pascutto)
 
 #### Added
 
@@ -27,10 +30,18 @@
     let encode_bin = Type.(unstage (encode_bin ty))
     let _ = <begin loop> ... encode_bin foo ... <end loop>
     ```
+  - Added a `clear` function for stores (#1071, @icristescu, @CraigFe)
+  - Requires digestif>=0.9 to use digestif's default variants
+    (#873, @pascutto, @samoht)
 
 - **irmin-pack**:
   - Added `index_throttle` option to `Irmin_pack.config`, which exposes the
     memory throttle feature of `Index` in `Irmin-Pack`. (#1049, @icristescu)
+
+  - Added `Pack.clear` and `Dict.clear` (#1047, @icristescu, @CraigFe, @samoht)
+
+  - Added a `migrate` function for upgrading stores with old formats (#TODO,
+    @icristescu, @CraigFe)
 
 #### Changed
 
@@ -43,8 +54,13 @@
 - **irmin-pack**:
   - `sync` has to be called by the read-only instance to synchronise with the
     files on disk. (#1008, @icristescu)
+
   - Renamed `sync` to `flush` for the operation that flushes to disk all buffers
     of a read-write instance. (#1008, @icristescu)
+
+  - Changed the format of headers for the files on disk to include a generation
+    number. Version 1 of irmin-pack was used for the previous format, version 2
+    is used with the new format. (#1047, @icristescu, @CraigFe, @samoht)
 
 ### 2.2.0 (2020-06-26)
 

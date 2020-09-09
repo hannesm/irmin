@@ -58,6 +58,18 @@ let invalid_arg fmt = Fmt.kstrf Lwt.fail_invalid_arg fmt
 
 exception Escape of ((int * int) * (int * int)) * Jsonm.error
 
+let () =
+  Printexc.register_printer (function
+    | Escape ((start, end_), err) ->
+        Fmt.kstr
+          (fun s -> Some s)
+          "Escape ({ start = %a; end = %a; error = %a })"
+          Fmt.(Dump.pair int int)
+          start
+          Fmt.(Dump.pair int int)
+          end_ Jsonm.pp_error err
+    | _ -> None)
+
 let json_stream (stream : string Lwt_stream.t) : Jsonm.lexeme list Lwt_stream.t
     =
   let d = Jsonm.decoder `Manual in
@@ -233,6 +245,9 @@ module RO (Client : Cohttp_lwt.S.Client) (K : Irmin.Type.S) (V : Irmin.Type.S) :
     f (cast t)
 
   let v ?ctx uri item items = Lwt.return { uri; item; items; ctx }
+
+  let clear t =
+    HTTP.call `POST t.uri t.ctx [ "clear"; t.items ] Irmin.Type.(of_string unit)
 end
 
 module AO (Client : Cohttp_lwt.S.Client) (K : Irmin.Hash.S) (V : Irmin.Type.S) =
@@ -318,6 +333,8 @@ functor
       | "false" -> Lwt.return_false
       | e -> Lwt.fail_with e
 
+    let pp_key = Irmin.Type.pp K.t
+
     let remove t key =
       HTTP.map_call `DELETE (RO.uri t.t) t.t.ctx ~keep_alive:false
         [ RO.item t.t; key_str key ] (fun (r, b) ->
@@ -325,8 +342,7 @@ functor
           | `Not_found | `OK -> Lwt.return_unit
           | _ ->
               Cohttp_lwt.Body.to_string b >>= fun b ->
-              Fmt.kstrf Lwt.fail_with "cannot remove %a: %s" (Irmin.Type.pp K.t)
-                key b)
+              Fmt.kstrf Lwt.fail_with "cannot remove %a: %s" pp_key key b)
 
     let nb_keys t = fst (W.stats t.w)
 
@@ -383,6 +399,11 @@ functor
                   | `Removed _ -> None
                   | `Added v | `Updated (_, v) -> Some v
                 in
+                Log.debug (fun l ->
+                    let pp_opt =
+                      Fmt.option ~none:(Fmt.any "<none>") (Irmin.Type.pp V.t)
+                    in
+                    l "notify %a: %a" pp_key k pp_opt v);
                 W.notify t.w k v)
               s
           in
@@ -402,6 +423,8 @@ functor
       Lwt.return_unit
 
     let close _ = Lwt.return_unit
+
+    let clear t = RO.clear t.t
   end
 
 module type HTTP_CLIENT = sig

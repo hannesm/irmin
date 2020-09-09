@@ -401,23 +401,36 @@ module Make (P : S.PRIVATE) = struct
 
   let pp_key = Type.pp Key.t
 
+  let pp_hash = Type.pp Hash.t
+
   let skip_key key =
     Log.debug (fun l -> l "[watch-key] key %a has not changed" pp_key key);
     Lwt.return_unit
 
-  let changed_key key =
-    Log.debug (fun l -> l "[watch-key] key %a has changed" pp_key key)
+  let changed_key key old_t new_t =
+    Log.debug (fun l ->
+        let pp = Fmt.option ~none:(Fmt.any "<none>") pp_hash in
+        let old_h = Option.map Tree.hash old_t in
+        let new_h = Option.map Tree.hash new_t in
+        l "[watch-key] key %a has changed: %a -> %a" pp_key key pp old_h pp
+          new_h)
 
   let with_tree ~key x f =
     x >>= function
     | None -> skip_key key
     | Some x ->
-        changed_key key;
+        changed_key key None None;
         f x
 
   let lift_tree_diff ~key tree fn = function
-    | `Removed x -> with_tree ~key (tree x) @@ fun v -> fn @@ `Removed (x, v)
-    | `Added x -> with_tree ~key (tree x) @@ fun v -> fn @@ `Added (x, v)
+    | `Removed x ->
+        with_tree ~key (tree x) @@ fun v ->
+        changed_key key (Some v) None;
+        fn @@ `Removed (x, v)
+    | `Added x ->
+        with_tree ~key (tree x) @@ fun v ->
+        changed_key key None (Some v);
+        fn @@ `Added (x, v)
     | `Updated (x, y) -> (
         assert (not (Commit.equal x y));
         tree x >>= fun vx ->
@@ -425,15 +438,15 @@ module Make (P : S.PRIVATE) = struct
         match (vx, vy) with
         | None, None -> skip_key key
         | None, Some vy ->
-            changed_key key;
+            changed_key key None (Some vy);
             fn @@ `Added (y, vy)
         | Some vx, None ->
-            changed_key key;
+            changed_key key (Some vx) None;
             fn @@ `Removed (x, vx)
         | Some vx, Some vy ->
             if Tree.equal vx vy then skip_key key
             else (
-              changed_key key;
+              changed_key key (Some vx) (Some vy);
               fn @@ `Updated ((x, vx), (y, vy))))
 
   let head t =
@@ -968,28 +981,30 @@ module Make (P : S.PRIVATE) = struct
 
   let pp_option = Type.pp (Type.option Type.int)
 
-  module Heap = Bheap.Make (struct
+  module Heap = Binary_heap.Make (struct
     type t = commit * int
 
     let compare c1 c2 =
-      Int64.compare
-        (Info.date (Commit.info (fst c1)))
-        (Info.date (Commit.info (fst c2)))
+      (* [bheap] operates on miminums, we need to invert the comparison. *)
+      -Int64.compare
+         (Info.date (Commit.info (fst c1)))
+         (Info.date (Commit.info (fst c2)))
   end)
 
   let last_modified ?depth ?(n = 1) t key =
     Log.debug (fun l ->
-        l "last_modified depth=%a number=%d key=%a" pp_option depth n pp_key key);
+        l "last_modified depth=%a n=%d key=%a" pp_option depth n pp_key key);
+    let repo = repo t in
     Head.get t >>= fun commit ->
-    let heap = Heap.create 5 in
+    let heap = Heap.create ~dummy:(commit, 0) 0 in
     let () = Heap.add heap (commit, 0) in
     let rec search acc =
       if Heap.is_empty heap || List.length acc = n then Lwt.return acc
       else
-        let current, current_depth = Heap.pop_maximum heap in
+        let current, current_depth = Heap.pop_minimum heap in
         let parents = Commit.parents current in
-        of_commit current >>= fun store ->
-        find store key >>= fun current_value ->
+        let tree = Commit.tree current in
+        Tree.find tree key >>= fun current_value ->
         if List.length parents = 0 then
           if current_value <> None then Lwt.return (current :: acc)
           else Lwt.return acc
@@ -1001,14 +1016,14 @@ module Make (P : S.PRIVATE) = struct
           in
           Lwt_list.for_all_p
             (fun hash ->
-              Commit.of_hash (repo store) hash >>= function
+              Commit.of_hash repo hash >>= function
               | Some commit -> (
                   let () =
                     if not max_depth then
                       Heap.add heap (commit, current_depth + 1)
                   in
-                  of_commit commit >>= fun store ->
-                  find store key >|= fun e ->
+                  let tree = Commit.tree commit in
+                  Tree.find tree key >|= fun e ->
                   match (e, current_value) with
                   | Some x, Some y -> not (Type.equal Contents.t x y)
                   | Some _, None -> true

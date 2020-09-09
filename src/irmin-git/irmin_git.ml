@@ -91,9 +91,18 @@ let config ?(config = Irmin.Private.Conf.empty) ?head ?bare ?level ?dot_git root
   let config = C.add config Conf.dot_git dot_git in
   config
 
+(** NOTE(craigfe): As of Git 2.1.3, attempting to [reset] repositories
+    concurrently can fail due to file-system race conditions. The next version
+    should fix this issue, so this global lock is a quick workaround. *)
+let reset_lock = Lwt_mutex.create ()
+
 module Make_private (G : Git.S) (C : Irmin.Contents.S) (P : Irmin.Path.S) =
 struct
   module H = Irmin.Hash.Make (G.Hash)
+
+  let handle_git_err = function
+    | Ok x -> Lwt.return x
+    | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
 
   module type V = sig
     type t
@@ -133,11 +142,9 @@ struct
 
     let add t v =
       let v = V.to_git v in
-      G.write t v >>= function
-      | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
-      | Ok (k, _) ->
-          Log.debug (fun l -> l "add %a" pp_key k);
-          Lwt.return k
+      G.write t v >>= handle_git_err >>= fun (k, _) ->
+      Log.debug (fun l -> l "add %a" pp_key k);
+      Lwt.return k
 
     let unsafe_add t k v =
       add t v >|= fun k' ->
@@ -146,6 +153,10 @@ struct
         Fmt.failwith
           "[Git.unsafe_append] %a is not a valid key. Expecting %a instead.\n"
           pp_key k pp_key k'
+
+    let clear t =
+      Log.debug (fun l -> l "clear");
+      Lwt_mutex.with_lock reset_lock (fun () -> G.reset t) >>= handle_git_err
   end)
 
   module Raw = Git.Value.Make (G.Hash)
@@ -531,6 +542,10 @@ functor
     module Val = Irmin.Hash.Make (G.Hash)
     module W = Irmin.Private.Watch.Make (Key) (Val)
 
+    let handle_git_err = function
+      | Ok x -> Lwt.return x
+      | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
+
     type t = {
       bare : bool;
       dot_git : Fpath.t;
@@ -653,18 +668,15 @@ functor
     let set t r k =
       Log.debug (fun f -> f "set %a" pp_branch r);
       let gr = git_of_branch r in
-      Lwt_mutex.with_lock t.m (fun () ->
-          G.Ref.write t.t gr (Git.Reference.Uid k))
-      >>= function
-      | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
-      | Ok () -> W.notify t.w r (Some k) >>= fun () -> write_index t gr k
+      Lwt_mutex.with_lock t.m @@ fun () ->
+      G.Ref.write t.t gr (Git.Reference.Uid k) >>= handle_git_err >>= fun () ->
+      W.notify t.w r (Some k) >>= fun () -> write_index t gr k
 
     let remove t r =
       Log.debug (fun f -> f "remove %a" pp_branch r);
-      Lwt_mutex.with_lock t.m (fun () -> G.Ref.remove t.t (git_of_branch r))
-      >>= function
-      | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
-      | Ok () -> W.notify t.w r None
+      Lwt_mutex.with_lock t.m @@ fun () ->
+      G.Ref.remove t.t (git_of_branch r) >>= handle_git_err >>= fun () ->
+      W.notify t.w r None
 
     let eq_head_contents_opt x y =
       match (x, y) with
@@ -673,13 +685,12 @@ functor
       | _ -> false
 
     let test_and_set t r ~test ~set =
-      Log.debug (fun f -> f "test_and_set %a" pp_branch r);
+      Log.debug (fun f ->
+          let pp = Fmt.option ~none:(Fmt.any "<none>") (Irmin.Type.pp Val.t) in
+          f "test_and_set %a: %a => %a" pp_branch r pp test pp set);
       let gr = git_of_branch r in
       let c = function None -> None | Some h -> Some (Git.Reference.Uid h) in
-      let ok = function
-        | Ok () -> Lwt.return_true
-        | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
-      in
+      let ok r = handle_git_err r >|= fun () -> true in
       Lwt_mutex.with_lock t.m (fun () ->
           (G.Ref.read t.t gr >>= function
            | Error (`Reference_not_found _ | `Not_found _) -> Lwt.return_none
@@ -708,6 +719,18 @@ functor
           >|= fun () -> b)
 
     let close _ = Lwt.return_unit
+
+    let clear t =
+      Log.debug (fun l -> l "clear");
+      Lwt_mutex.with_lock t.m (fun () ->
+          G.Ref.list t.t >>= fun refs ->
+          Lwt_list.iter_p
+            (fun (r, _) ->
+              G.Ref.remove t.t r >>= handle_git_err >>= fun () ->
+              match branch_of_git r with
+              | Some k -> W.notify t.w k None
+              | None -> Lwt.return_unit)
+            refs)
   end
 
 module Irmin_sync_store
@@ -913,6 +936,10 @@ functor
       else (
         t.closed := true;
         S.close t.t)
+
+    let clear t =
+      check_not_closed t;
+      S.clear t.t
   end
 
 module Make_ext
@@ -980,11 +1007,11 @@ struct
       let v conf =
         let { root; dot_git; head; bare; _ } = config conf in
         let dotgit = fopt Fpath.v dot_git in
-        G.v ?dotgit (Fpath.v root) >>= function
-        | Error e -> Fmt.kstrf Lwt.fail_with "%a" G.pp_error e
-        | Ok g ->
-            R.v ~head ~bare g >|= fun b ->
-            { g; b; closed = ref false; config = conf }
+        let root = Fpath.v root in
+        G.v ?dotgit root >>= handle_git_err
+        >>= fun g ->
+        R.v ~head ~bare g >|= fun b ->
+        { g; b; closed = ref false; config = conf }
 
       let close t = R.close t.b >|= fun () -> t.closed := true
     end
@@ -1091,6 +1118,8 @@ module Content_addressable (G : Git.S) (V : Irmin.Type.S) = struct
   let find = with_state X.find
 
   let mem = with_state X.mem
+
+  let clear _ = Lwt.fail_with "not implemented"
 end
 
 module Atomic_write (G : Git.S) (K : Irmin.Branch.S) = struct
