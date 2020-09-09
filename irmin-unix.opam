@@ -56,4 +56,5 @@ pin-depends: [
   [ "conduit-lwt.dev" "git+https://github.com/dinosaure/ocaml-conduit.git#4dffc531e6dde24fcc6aec84bb453f5bea277e80" ]
   [ "cohttp.dev" "git+https://github.com/dinosaure/ocaml-cohttp.git#63e6026178b8a8750837f343d386ad5445aa236d" ]
   [ "cohttp-lwt.dev" "git+https://github.com/dinosaure/ocaml-cohttp.git#63e6026178b8a8750837f343d386ad5445aa236d" ]
+  [ "cohttp-lwt-unix.dev" "git+https://github.com/dinosaure/ocaml-cohttp.git#63e6026178b8a8750837f343d386ad5445aa236d" ]
 ]
