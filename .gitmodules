@@ -1,4 +1,0 @@
-[submodule "ocaml-git"]
-	path = ocaml-git
-	url = https://github.com/dinosaure/ocaml-git.git
-	branch = ng
