@@ -18,6 +18,7 @@ depends: [
   "irmin-git"  {>= "2.0.0"}
   "git-mirage"
   "mirage-kv" {>= "3.0.0"}
+  "conduit-lwt"
 ]
 
 synopsis: "MirageOS-compatible Irmin stores"
