@@ -63,7 +63,7 @@ module Make
 struct
   include Irmin_git.Make
             (G)
-            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp))
+            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp_mirage))
             (C)
             (P)
             (B)
@@ -74,7 +74,7 @@ end
 module Ref (G : Irmin_git.G) (C : Irmin.Contents.S) = struct
   include Irmin_git.Ref
             (G)
-            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp))
+            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp_mirage))
             (C)
 
   let remote ?resolvers ?headers uri = E (remote ?resolvers ?headers uri)
@@ -83,7 +83,7 @@ end
 module KV (G : Irmin_git.G) (C : Irmin.Contents.S) = struct
   include Irmin_git.KV
             (G)
-            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp))
+            (Git.Mem.Sync (Conduit_mirage) (G) (Git_cohttp_mirage))
             (C)
 
   let remote ?resolvers ?headers uri = E (remote ?resolvers ?headers uri)
