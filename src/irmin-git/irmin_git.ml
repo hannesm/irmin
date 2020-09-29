@@ -1072,7 +1072,7 @@ module No_sync (G : Git.S) = struct
 
   let pp_error _ _ = assert false
 
-  let fetch ~resolvers:_ _ _ ?version:_ ?capabilities:_ _ = assert false
+  let fetch ?push_stdout ?push_stderr ~resolvers:_ _ _ ?version:_ ?capabilities:_ _ = assert false
 
   let push ~resolvers:_ _ _ ?version:_ ?capabilities:_ _ = assert false
 end
