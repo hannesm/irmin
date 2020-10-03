@@ -763,13 +763,12 @@ struct
 
   let fetch t ?depth (resolvers, e) br =
     Log.debug (fun f -> f "fetch %a" Smart_git.pp_endpoint e);
-    let _deepen = depth in
-    (* FIXME: need to be exposed in the Git API *)
+    let deepen = match depth with None -> None | Some x -> Some (`Depth x) in
     let reference = git_of_branch br in
     let capabilities =
       [ `Side_band_64k; `Multi_ack_detailed; `Ofs_delta; `Thin_pack
       ; `Report_status ] in
-    S.fetch ~capabilities ~resolvers e t (`Some [ reference ]) >>= function
+    S.fetch ~capabilities ?deepen ~resolvers e t (`Some [ reference ]) >>= function
     | Error `Not_found -> Lwt.return (Error (`Msg "not found"))
     | Error (`Msg err) -> Lwt.return (Error (`Msg err))
     | Error (`Exn err) -> Lwt.return (Error (`Msg (Printexc.to_string err)))
