@@ -185,13 +185,13 @@ module KV_RO (G : Git.S) = struct
     | [] -> Error (`Not_found key)
     | h :: _ -> Ok (0, Irmin.Info.date (S.Commit.info h))
 
-  let connect ?(depth = 1) ?(branch = "master") ?(root = Mirage_kv.Key.empty)
+  let connect ?depth ?(branch = "master") ?(root = Mirage_kv.Key.empty)
       ?resolvers ?headers t uri =
     let remote = S.remote ?resolvers ?headers uri in
     let head = Git.Reference.v ("refs/heads/" ^ branch) in
     S.repo_of_git ~bare:true ~head t >>= fun repo ->
     S.of_branch repo branch >>= fun t ->
-    Sync.pull_exn t ~depth remote `Set >|= fun _ ->
+    Sync.pull_exn t ?depth remote `Set >|= fun _ ->
     let root = path root in
     { t; root }
 
