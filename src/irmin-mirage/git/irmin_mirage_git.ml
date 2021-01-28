@@ -210,7 +210,8 @@ module type KV_RW = sig
     ?depth:int ->
     ?branch:string ->
     ?root:key ->
-    ?ctx:Mimic.ctx ->
+    ?rd_ctx:Mimic.ctx ->
+    ?wr_ctx:Mimic.ctx ->
     ?headers:Cohttp.Header.t ->
     ?author:(unit -> string) ->
     ?msg:([ `Set of key | `Remove of key | `Batch ] -> string) ->
@@ -252,10 +253,10 @@ module KV_RW (G : Irmin_git.G) (C : Mirage_clock.PCLOCK) = struct
     | `Remove k -> Fmt.strf "Removing %a" Mirage_kv.Key.pp k
     | `Batch -> "Commmiting batch operation"
 
-  let connect ?depth ?branch ?root ?ctx ?headers ?(author = default_author)
-      ?(msg = default_msg) git uri =
-    RO.connect ?depth ?branch ?root ?ctx ?headers git uri >|= fun t ->
-    let remote = S.remote ?ctx ?headers uri in
+  let connect ?depth ?branch ?root ?rd_ctx ?wr_ctx ?headers
+      ?(author = default_author) ?(msg = default_msg) git uri =
+    RO.connect ?depth ?branch ?root ?ctx:rd_ctx ?headers git uri >|= fun t ->
+    let remote = S.remote ?ctx:wr_ctx ?headers uri in
     { store = Store t; author; msg; remote }
 
   let disconnect t =

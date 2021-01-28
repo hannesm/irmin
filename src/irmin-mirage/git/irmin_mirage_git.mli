@@ -74,7 +74,8 @@ module type KV_RW = sig
     ?depth:int ->
     ?branch:string ->
     ?root:key ->
-    ?ctx:Mimic.ctx ->
+    ?rd_ctx:Mimic.ctx ->
+    ?wr_ctx:Mimic.ctx ->
     ?headers:Cohttp.Header.t ->
     ?author:(unit -> string) ->
     ?msg:([ `Set of key | `Remove of key | `Batch ] -> string) ->
